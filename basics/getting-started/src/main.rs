@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     //                          ^     ^       ^         ^-- Port number
     //                          |     |       |-- IP Address of redis server
     //                          |     |-- Protocol to use -- One of: redis, rediss, unix, redis+unix
-    //                          |-- "open" only validates the connection information and configured the connection.
+    //                          |-- open() only validates the connection information and configures the connection.
     //                          |-- No sockets are actually opened at this point.
 
     // Display connection information
