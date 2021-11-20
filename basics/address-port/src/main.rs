@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     println!("{icon} Connection open: {}", con.is_open(), icon = CON_ICON);
 
     // Set key's value
-    let key_name = "getting:started:key";
+    let key_name = "addr:port:key";
     let val = 42;
     println!("{icon} Setting {} => {}", key_name, val, icon = SEND_ICON);
     let resp: String = con.set(key_name, val)?;
