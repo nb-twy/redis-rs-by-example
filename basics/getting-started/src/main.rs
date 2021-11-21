@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     // We should cleanup, so let's remove the key we created
     println!("{icon} Cleaning up.", icon = CLEAN_ICON);
     let _ : () = con.del(key_name)?;
-    //  ^-- Ignore the server's response, which is just "OK".
-    //   -- If it fails, it will return a Result<Error>.
+    //  ^-- Ignore the server's response, which is int(1), telling us how many keys were deleted successfully.
+    //  |-- If it fails, it will return a Result<Error>.
     Ok(())
 }
