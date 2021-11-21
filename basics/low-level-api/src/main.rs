@@ -176,7 +176,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             Ok(Value::Status(ref val)) => val.to_string(),
             Ok(Value::Bulk(ref items)) => {
                 let vec: Vec<String> = FromRedisValue::from_redis_values(items)?;
-                vec.join("")
+                vec.join(" ")
             },
             Err(err) => err.to_string()
         };
