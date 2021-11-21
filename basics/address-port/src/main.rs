@@ -72,8 +72,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let host: String = matches.value_of("HOST").unwrap().to_string();
     //                                          ^-- Because of the default value for HOST, 
-    //                                              unwrap will never have to deal with a 
-    //                                              None variant.
+    //                                          |-- unwrap will never have to deal with a 
+    //                                          |-- None variant.
     let port: u16 = matches.value_of("PORT").unwrap().parse().unwrap_or(6379);
     // While the default values mean that unwrap -----^
     // will never receive a None vairant, parsing
@@ -97,7 +97,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     };
 
     // ======== Everything that follows is identical to the getting-started example. ========
-    // Open connection to local redis server on default port
+    // Open connection to local redis server
     let client = redis::Client::open(con_info)?;
 
     // Display connection information
@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     println!("{icon} Setting {} => {}", key_name, val, icon = SEND_ICON);
     let resp: String = con.set(key_name, val)?;
     //        ^-- Tell it what type you'd like back.
-    //         -- The "FromRedisValue" trait is implemented for most types.
+    //        |-- The "FromRedisValue" trait is implemented for most types.
 
     println!("{icon} Response from server to setting key's val: {}", resp, icon = RECV_ICON);
 
@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     // We should cleanup, so let's remove the key we created
     println!("{icon} Cleaning up.", icon = CLEAN_ICON);
     let _ : () = con.del(key_name)?;
-    //  ^-- Ignore the server's response, which is just "OK".
-    //   -- If it fails, it will return a Result<Error>.
+    //  ^-- Ignore the server's response, which is int(1), telling us how many keys were deleted successfully.
+    //  |-- If it fails, it will return a Result<Error>.
     Ok(())
 }
