@@ -1,10 +1,43 @@
 use std::error;
+use std::thread::sleep;
+use std::time::Duration;
 
 use clap_v3::{App, Arg};
 use redis::{ConnectionInfo, Commands};
+use rand::prelude::*;
 
-const SEND_ICON: &str = "\u{27A5}";
-const RECV_ICON: &str = "\u{1F814}";
+const POSTAL_CODES: [i32; 4] = [94016, 80014, 60659, 10011];
+const MAX_TEMP: i32 = 100;
+const MIN_TEMP: i32 = 0;
+
+#[derive(Debug)]
+struct Measurement {
+    postal_code: i32,
+    current_temp: i32,
+}
+
+impl Measurement {
+    pub fn new() -> Measurement {
+        Measurement { postal_code: POSTAL_CODES[0],
+                      current_temp: 50}
+    }
+
+    pub fn get_next(&mut self) -> &Self {
+        let mut rng = thread_rng();
+        let rnd: f64 = rng.gen();
+        if rnd >= 0.5 {
+            if self.current_temp + 1 <= MAX_TEMP {
+                self.current_temp += 1;
+            } 
+        } else {
+            if self.current_temp - 1 >= MIN_TEMP {
+                self.current_temp -= 1;
+            }
+        }
+        
+        self
+    }
+}
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     
@@ -46,19 +79,17 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let mut con = client.get_connection()?;
 
     // Set key's value
-    let key_name = "getting:started:key";
-    let val = 42;
-    println!("{icon} Setting {} => {}", key_name, val, icon = SEND_ICON);
-    let resp: String = con.set(key_name, val)?;
+    let stream_name = "stream:weather";
+    let mut measurement = Measurement::new();
 
-    println!("{icon} Response from server to setting key's val: {}", resp, icon = RECV_ICON);
-
-    // Get key's value and display it
-    let count: i32 = con.get(key_name)?;
-    // Display value of key
-    println!("{icon} Value of {} read from server => {}", key_name, count, icon = RECV_ICON);
-
-    // We should cleanup, so let's remove the key we created
-
-    Ok(())
+    loop {
+        let entry = measurement.get_next();
+        // To Do: Is there a better way to enumerate the struct's key:value pairs?
+        let id: String = con.xadd(stream_name, "*", &[
+            ("postal_code", entry.postal_code),
+            ("current_temp", entry.current_temp)
+        ])?;
+        println!("Wrote {:?} with ID {}", entry, id);
+        sleep(Duration::from_secs(1));
+    }
 }
