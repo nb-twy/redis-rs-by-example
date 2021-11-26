@@ -37,6 +37,11 @@ impl Measurement {
         
         self
     }
+
+    pub fn to_stream_data(&self) -> Vec<(String, String)> {
+        vec![(String::from("postal_code"), self.postal_code.to_string()),
+        (String::from("current_temp"), self.current_temp.to_string())]
+    }
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -84,11 +89,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     loop {
         let entry = measurement.get_next();
-        // To Do: Is there a better way to enumerate the struct's key:value pairs?
-        let id: String = con.xadd(stream_name, "*", &[
-            ("postal_code", entry.postal_code),
-            ("current_temp", entry.current_temp)
-        ])?;
+        let id: String = con.xadd(stream_name, "*", &entry.to_stream_data()[..])?;
         println!("Wrote {:?} with ID {}", entry, id);
         sleep(Duration::from_secs(1));
     }
