@@ -84,12 +84,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let mut con = client.get_connection()?;
 
     // Set key's value
-    let stream_name = "stream:weather";
+    let stream_key = "stream:weather";
     let mut measurement = Measurement::new();
 
     loop {
         let entry = measurement.get_next();
-        let id: String = con.xadd(stream_name, "*", &entry.to_stream_data()[..])?;
+        let id: String = con.xadd(stream_key, "*", &entry.to_stream_data()[..])?;
         println!("Wrote {:?} with ID {}", entry, id);
         sleep(Duration::from_secs(1));
     }
