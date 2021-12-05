@@ -2,32 +2,49 @@ use std::error;
 use std::process::exit;
 use std::thread::sleep;
 use std::time::Duration;
-use std::str;
+use std::collections::VecDeque;
 
 use clap_v3::{App, Arg};
-use redis::{ConnectionInfo, Commands, RedisResult, Value, streams};
+use redis::{ConnectionInfo, Commands, RedisResult, streams};
 use hostname;
 
-fn write_to_data_warehouse(data: &streams::StreamReadReply) {
-    if !data.keys.is_empty() {
-        for key in &data.keys {
-            let key_name = &key.key;
-            for id in &key.ids {
-                println!("Stream: {}", key_name);
-                print!("\tid: {} data: [ ", id.id);
-                for (key, val) in &id.map {
-                    print!("{}: {}, ", key, 
-                        match val {
-                            Value::Int(val) => val.to_string(),
-                            Value::Data(ref bytes) => str::from_utf8(bytes).unwrap().to_string(),
-                            _ => String::from("Type representation not implemented")
-                        });
-                }
-                print!("]\n");
-                println!("\tWritten to data warehouse.");
-            }
+struct Window {
+    size: usize,
+    data: VecDeque<i32>,
+    sum: i32,
+    average: f32,
+}
+
+impl Window {
+    pub fn new(size: usize) -> Window {
+        Window { 
+            size,
+            sum: 0,
+            data: VecDeque::with_capacity(size),
+            average: 0.0,
         }
     }
+
+    pub fn append(&mut self, entry: i32) {
+        if self.data.len() == self.size {
+            let out = self.data.pop_back().unwrap();
+            self.sum -= out;
+        }
+        self.data.push_front(entry);
+        self.sum += entry;
+        self.average = self.sum as f32 / self.data.len() as f32;
+    }
+
+    pub fn get_average(&self) -> f32 {
+        self.average
+    }
+}
+
+fn show_processing(data: &streams::StreamId) {
+    println!("Processing");
+    println!("\tid: {}", data.id);
+    println!("\tpostal_code: {}", data.get::<i32>("postal_code").unwrap());
+    println!("\tcurrent_temp: {}", data.get::<i32>("current_temp").unwrap());
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -98,13 +115,23 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         Err(_) => println!("Group {} already exists.", group_name)
     }
 
+    // Calculate and display the rolling window average as each message is read from the stream
+    let window_size = 10;
+    let mut window = Window::new(window_size);
+
     loop {
         let results: RedisResult<streams::StreamReadReply> = con.xread_options(&[stream_key], &[stream_offsets], &stream_read_options);
         match results {
             Ok(data) => { 
-                // Show the user the data that is to be processed
-                // Show the rolling window average
-                write_to_data_warehouse(&data)
+                if !data.keys.is_empty() {
+                    for id in &data.keys[0].ids {
+                        // Show the user the data that is to be processed
+                        show_processing(id);
+                        // Show the rolling window average
+                        window.append(id.get("current_temp").unwrap());
+                        println!("Rolling Average: {}", window.get_average());
+                    }
+                }
             },
             Err(e) => println!("[Error] {:?}", e)
         }
