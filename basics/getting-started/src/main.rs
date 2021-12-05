@@ -2,7 +2,6 @@ use redis::{Commands, ConnectionLike};
 use std::error;
 
 const CON_ICON: &str = "\u{21CC}";
-// const EXP_ICON: &str = "\u{1F9EA}";
 const SEND_ICON: &str = "\u{27A5}";
 const RECV_ICON: &str = "\u{1F814}";
 const CLEAN_ICON: &str = "\u{1F9F9}";
