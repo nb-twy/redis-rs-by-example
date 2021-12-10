@@ -2,9 +2,10 @@ use std::error;
 use std::thread::sleep;
 use std::time::Duration;
 
-use clap_v3::{App, Arg};
-use redis::{ConnectionInfo, Commands};
+use redis::Commands;
 use rand::prelude::*;
+
+use rs_util;
 
 const POSTAL_CODES: [i32; 4] = [94016, 80014, 60659, 10011];
 const MAX_TEMP: i32 = 100;
@@ -46,42 +47,13 @@ impl Measurement {
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     
-    let matches = App::new("ru202-intro-producer")
-        .about("
-        Redis University 202 - Streams: Intro Lab
+    let app_name = String::from("ru202-intro-producer");
+    let about = String::from("
+    Redis University 202 - Streams: Intro Lab
             Producer
-            Simulate distributed temperature sensors streaming data")
-        .version("0.1.0")
-        .arg(
-            Arg::with_name("HOST")
-                .help("The resolvable hostname or IP address of the Redis server")
-                .long("host")
-                .short('h')
-                .default_value("127.0.0.1"),
-        )
-        .arg(
-            Arg::with_name("PORT")
-                .help("TCP port number of the Redis server")
-                .long("port")
-                .short('p')
-                .default_value("6379"),
-        )
-        .get_matches();
-
-    let host: String = matches.value_of("HOST").unwrap().to_string();
-    let port: u16 = matches.value_of("PORT").unwrap().parse().unwrap_or(6379);
-    let con_info = ConnectionInfo {
-        addr: redis::ConnectionAddr::Tcp(host, port),
-        redis: redis::RedisConnectionInfo {
-            db: 0,
-            username: None,
-            password: None,
-        }
-    };
-
-    // Open connection to local redis server on default port
-    let client = redis::Client::open(con_info)?;
-    let mut con = client.get_connection()?;
+            Simulate distributed temperature sensors streaming data");
+    let config = rs_util::app_config(app_name, about);
+    let mut con = rs_util::get_connection(&config)?;
 
     // Set key's value
     let stream_key = "stream:weather";

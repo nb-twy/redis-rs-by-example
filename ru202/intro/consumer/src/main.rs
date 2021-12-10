@@ -2,28 +2,21 @@ use std::error;
 use std::process::exit;
 use std::thread::sleep;
 use std::time::Duration;
-use std::str;
 
-use clap_v3::{App, Arg};
-use redis::{ConnectionInfo, Commands, RedisResult, Value, streams};
+use redis::{Commands, RedisResult, streams};
 use hostname;
+
+use rs_util;
 
 fn write_to_data_warehouse(data: &streams::StreamReadReply) {
     if !data.keys.is_empty() {
-        for key in &data.keys {
-            let key_name = &key.key;
-            for id in &key.ids {
-                println!("Stream: {}", key_name);
-                print!("\tid: {} data: [ ", id.id);
-                for (key, val) in &id.map {
-                    print!("{}: {}, ", key, 
-                        match val {
-                            Value::Int(val) => val.to_string(),
-                            Value::Data(ref bytes) => str::from_utf8(bytes).unwrap().to_string(),
-                            _ => String::from("Type representation not implemented")
-                        });
-                }
-                print!("]\n");
+        for stream in &data.keys {
+            println!("Stream: {}", stream.key);
+            for id in &stream.ids {
+                println!("\tid: {} data: [postal_code: {}, current_temp: {}]", 
+                    id.id,
+                    id.get::<i32>("postal_code").unwrap(),
+                    id.get::<i32>("current_temp").unwrap());
                 println!("\tWritten to data warehouse.");
             }
         }
@@ -31,44 +24,15 @@ fn write_to_data_warehouse(data: &streams::StreamReadReply) {
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    
-    let matches = App::new("ru202-intro-consumer")
-        .about("
-        Redis University 202 - Streams: Intro Lab
-            Consumer
-            Simulate consuming the stream as a single member of a consumer group
-            and writing the data to a data warehouse.")
-        .version("0.1.0")
-        .arg(
-            Arg::with_name("HOST")
-                .help("The resolvable hostname or IP address of the Redis server")
-                .long("host")
-                .short('h')
-                .default_value("127.0.0.1"),
-        )
-        .arg(
-            Arg::with_name("PORT")
-                .help("TCP port number of the Redis server")
-                .long("port")
-                .short('p')
-                .default_value("6379"),
-        )
-        .get_matches();
+    let app_name = String::from("ru202-intro-consumer");
+    let about = String::from("
+    Redis University 202 - Streams: Intro Lab
+        Consumer
+        Simulate consuming the stream as a single member of a consumer group
+        and writing the data to a data warehouse.");
 
-    let host: String = matches.value_of("HOST").unwrap().to_string();
-    let port: u16 = matches.value_of("PORT").unwrap().parse().unwrap_or(6379);
-    let con_info = ConnectionInfo {
-        addr: redis::ConnectionAddr::Tcp(host, port),
-        redis: redis::RedisConnectionInfo {
-            db: 0,
-            username: None,
-            password: None,
-        }
-    };
-
-    // Open a connection to the Redis server with the default info or what was provided on the command line
-    let client = redis::Client::open(con_info)?;
-    let mut con = client.get_connection()?;
+    let config = rs_util::app_config(app_name, about);
+    let mut con = rs_util::get_connection(&config)?;
 
     // Set up information for the consumer group
     let stream_key = "stream:weather";  // name of the stream to read from
@@ -96,7 +60,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     }
 
     loop {
-        let results: RedisResult<streams::StreamReadReply> = con.xread_options(&[stream_key], &[stream_offsets], &stream_read_options);
+        let results: RedisResult<streams::StreamReadReply> = 
+                con.xread_options(&[stream_key], &[stream_offsets], &stream_read_options);
         match results {
             Ok(data) => write_to_data_warehouse(&data),
             Err(e) => println!("[Error] {:?}", e)

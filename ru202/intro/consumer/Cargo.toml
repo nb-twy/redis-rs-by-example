@@ -9,3 +9,4 @@ edition = "2021"
 clap-v3 = "3.0.0-beta.1"
 redis = "0.21.4"
 hostname = "0.3.0"
+rs_util = { path = "../../../rs_util" }

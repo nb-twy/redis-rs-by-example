@@ -99,6 +99,7 @@ dependencies = [
  "clap-v3",
  "hostname",
  "redis",
+ "rs_util",
 ]
 
 [[package]]
@@ -272,6 +273,14 @@ dependencies = [
  "percent-encoding",
  "sha1",
  "url",
+]
+
+[[package]]
+name = "rs_util"
+version = "0.1.0"
+dependencies = [
+ "clap-v3",
+ "redis",
 ]
 
 [[package]]
