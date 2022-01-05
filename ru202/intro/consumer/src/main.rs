@@ -13,7 +13,7 @@ fn write_to_data_warehouse(data: &streams::StreamReadReply) {
         for stream in &data.keys {
             println!("Stream: {}", stream.key);
             for id in &stream.ids {
-                println!("\tid: {} data: [postal_code: {}, current_temp: {}]", 
+                println!("\tid: {}, data: [postal_code: {}, current_temp: {}]", 
                     id.id,
                     id.get::<i32>("postal_code").unwrap(),
                     id.get::<i32>("current_temp").unwrap());
