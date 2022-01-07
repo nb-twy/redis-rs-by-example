@@ -1,7 +1,11 @@
 use std::error;
+use std::thread::sleep;
+use std::time::Duration;
 
-use redis::{Commands, ConnectionInfo, ConnectionLike};
+use redis::{Commands, ConnectionInfo, RedisResult};
+use redis::streams::{StreamReadOptions, StreamReadReply};
 use clap_v3::{App, Arg};
+use rand::prelude::*;
 
 fn main() -> Result<(), Box<dyn error::Error>> {
 
@@ -65,6 +69,37 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     // Open connection to local redis server
     let client = redis::Client::open(con_info)?;
+    let mut con = client.get_connection()?;
 
+    consumer(&mut con, &stream_name, &group_name, &consumer_name);
     Ok(())
+}
+
+fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, consumer_name: &str) {
+    let mut rng = thread_rng();
+    let mut timeout = 100;
+    let mut retries = 0;
+    let mut recovery = true;
+    let mut from_id = ">".to_string();
+
+    loop {
+        let count = rng.gen_range(1..6);
+        let opts = StreamReadOptions::default()
+                    .group(group_name, consumer_name)
+                    .count(count)
+                    .block(timeout);
+        let reply: StreamReadReply = con.xread_options(&[&stream_name], &[&from_id], &opts).unwrap();
+        
+        if !reply.keys.is_empty() {
+            for stream in &reply.keys {
+                for id in &stream.ids {
+                    println!("\tid: {}, n: {}", 
+                        id.id,
+                        id.get::<i32>("n").unwrap());
+                    let _: RedisResult<()> = con.xack(&stream_name, &group_name, &[&id.id]);
+                }
+            }
+        }
+
+    }
 }
