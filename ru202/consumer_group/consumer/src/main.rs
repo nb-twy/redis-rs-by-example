@@ -2,49 +2,39 @@ use std::error;
 use std::thread::sleep;
 use std::time::Duration;
 
-use redis::{Commands, ConnectionInfo, RedisResult};
-use redis::streams::{StreamReadOptions, StreamReadReply};
 use clap_v3::{App, Arg};
 use rand::prelude::*;
+use redis::streams::{StreamReadOptions, StreamReadReply};
+use redis::{Commands, ConnectionInfo, RedisResult};
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-
     let matches = App::new("rrbe-address-port")
         .about("Demo redis-rs for non-default connection info")
         .version("0.1.0")
         .arg(
             Arg::with_name("HOST")
-            .help("The resolvable host name or IP address of the Redis server")
-            .long("host")
-            .short('h')
-            .default_value("127.0.0.1")
+                .help("The resolvable host name or IP address of the Redis server")
+                .long("host")
+                .short('h')
+                .default_value("127.0.0.1"),
         )
         .arg(
             Arg::with_name("PORT")
-            .help("TCP port number of the Redis server")
-            .long("port")
-            .short('p')
-            .default_value("6379")
+                .help("TCP port number of the Redis server")
+                .long("port")
+                .short('p')
+                .default_value("6379"),
         )
         .arg(
             Arg::with_name("DB")
-            .help("DB number on the Redis server")
-            .long("db")
-            .short('d')
-            .default_value("0")
+                .help("DB number on the Redis server")
+                .long("db")
+                .short('d')
+                .default_value("0"),
         )
-        .arg(
-            Arg::with_name("STREAM")
-            .help("Stream name")
-        )
-        .arg(
-            Arg::with_name("GROUP")
-            .help("Consumer group name")
-        )
-        .arg(
-            Arg::with_name("CONSUMER")
-            .help("Consumer instance name")
-        )
+        .arg(Arg::with_name("STREAM").help("Stream name"))
+        .arg(Arg::with_name("GROUP").help("Consumer group name"))
+        .arg(Arg::with_name("CONSUMER").help("Consumer instance name"))
         .get_matches();
 
     let host: String = matches.value_of("HOST").unwrap().to_string();
@@ -56,7 +46,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             db,
             username: None,
             password: None,
-        }
+        },
     };
 
     let stream_name: String = matches.value_of("STREAM").unwrap().to_string();
@@ -80,26 +70,53 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
     let mut timeout = 100;
     let mut retries = 0;
     let mut recovery = true;
-    let mut from_id = ">".to_string();
+    let mut from_id = "0".to_string();
 
     loop {
         let count = rng.gen_range(1..6);
         let opts = StreamReadOptions::default()
-                    .group(group_name, consumer_name)
-                    .count(count)
-                    .block(timeout);
-        let reply: StreamReadReply = con.xread_options(&[&stream_name], &[&from_id], &opts).unwrap();
+            .group(group_name, consumer_name)
+            .count(count)
+            .block(timeout);
+        // Using the ID 0 asks for any pending messages from the stream
+        let reply: StreamReadReply = con
+            .xread_options(&[&stream_name], &[&from_id], &opts)
+            .unwrap();
         
-        if !reply.keys.is_empty() {
-            for stream in &reply.keys {
-                for id in &stream.ids {
-                    println!("\tid: {}, n: {}", 
-                        id.id,
-                        id.get::<i32>("n").unwrap());
-                    let _: RedisResult<()> = con.xack(&stream_name, &group_name, &[&id.id]);
-                }
+        // Handle timeouts - when stream entries are not available to be read
+        if reply.keys.is_empty() {
+            if retries == 5 {
+                println!("{}: Waited long enough - bye bye...", consumer_name);
+                break;
+            }
+            retries += 1;
+            timeout *= 2;
+            continue;
+        }
+
+        // If we have recovered from a timeout situation, reset the timeout thresholds
+        timeout = 100;
+        retries = 0;
+
+        if recovery {
+            // If the response is empty, then there are no pending messages.
+            if !reply.keys[0].ids.is_empty() {
+                println!("{}: Recovering pending messages...", consumer_name);
+            } else {
+                // If there are no messages to recover, switch to fetching new messages.
+                println!("{}: Processing new messages...", consumer_name);
+                recovery = false;
+                from_id = ">".to_string();
+                continue;
             }
         }
 
+        // Process messages
+        for stream in &reply.keys {
+            for id in &stream.ids {
+                println!("\tid: {}, n: {}", id.id, id.get::<i32>("n").unwrap());
+                let _: RedisResult<()> = con.xack(&stream_name, &group_name, &[&id.id]);
+            }
+        }
     }
 }
