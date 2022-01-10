@@ -6,6 +6,7 @@ use clap_v3::{App, Arg};
 use rand::prelude::*;
 use redis::streams::{StreamReadOptions, StreamReadReply};
 use redis::{Commands, ConnectionInfo, RedisResult};
+use is_prime::*;
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     let matches = App::new("rrbe-address-port")
@@ -114,7 +115,12 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
         // Process messages
         for stream in &reply.keys {
             for id in &stream.ids {
-                println!("\tid: {}, n: {}", id.id, id.get::<i32>("n").unwrap());
+                let n: i32 = id.get("n").unwrap();
+                if is_prime(&n.to_string()) {
+                    println!("{}: {} is a prime number", consumer_name, n);
+                } else {
+                    println!("{}: {} is a not prime number", consumer_name, n);
+                }
                 let _: RedisResult<()> = con.xack(&stream_name, &group_name, &[&id.id]);
             }
         }
