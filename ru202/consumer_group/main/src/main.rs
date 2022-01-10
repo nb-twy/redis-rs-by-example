@@ -56,12 +56,30 @@ fn consumers() -> Vec<Consumer> {
     let mut consumers: Vec<Consumer> = vec![];
     for i in 1..=MEMBERS {
         let name = format!("BOB-{:02}", i);
-        let process_id = Command::new("./consumer_group_consumer")
-                        .args([KEY, GROUP, &name])
-                        .spawn().unwrap();
-        consumers.push(Consumer { name, process_id });
+        consumers.push(new_consumer(name));
     }
     consumers
+}
+
+fn new_consumer(name: String) -> Consumer {
+    let process_id = Command::new("./consumer_group_consumer")
+                        .args([KEY, GROUP, &name])
+                        .spawn().unwrap();
+    Consumer { name, process_id }
+}
+
+fn chaos(mut consumers: Vec<Consumer>) {
+    loop {
+        let mut rng = thread_rng();
+        if rng.gen_range(2..=12) == 2 {
+            let victim = rng.gen_range(0..MEMBERS) as usize;
+            let name = format!("BOB-{:02}", victim + 1);
+            consumers[victim].process_id.kill().expect("Failed to stop process");
+            consumers[victim] = new_consumer(name);
+            println!("CHAOS: Restarted {}", consumers[victim].name);
+        }
+        thread::sleep(Duration::from_millis(rng.gen_range(1000..=2000)));
+    }
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -80,7 +98,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     setup(&config);
 
     // Start the consumers in separate child processes
-    consumers();
+    let consumers = consumers();
+
+    // Start the chaos function in a separate thread
+    thread::spawn(|| chaos(consumers));
+
+    // Start the producer on the main thread
     producer(&config);
 
     Ok(())
