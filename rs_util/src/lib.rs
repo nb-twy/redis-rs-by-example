@@ -1,6 +1,7 @@
 use clap_v3::{App, Arg};
 use redis::{Connection, ConnectionInfo, RedisResult};
 
+#[derive(Clone, Debug)]
 pub struct Config {
     pub host: String,
     pub port: u16

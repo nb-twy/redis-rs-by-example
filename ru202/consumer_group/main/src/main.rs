@@ -2,6 +2,8 @@ use std::error;
 use std::process::{Child, Command};
 use std::thread;
 use std::time::Duration;
+use std::io;
+use std::sync::mpsc::{self, TryRecvError};
 
 use rand::prelude::*;
 use redis::Commands;
@@ -24,11 +26,11 @@ fn setup(config: &rs_util::Config) {
     let _: () = con.xgroup_create_mkstream(KEY, GROUP, 0).unwrap();
 }
 
-fn producer(config: &rs_util::Config) {
+fn producer(config: rs_util::Config, rx: mpsc::Receiver<&str>) {
     // Produce a stream of natural numbers
 
     // Make named connection
-    let mut con = rs_util::get_connection(config).unwrap();
+    let mut con = rs_util::get_connection(&config).unwrap();
     let _: () = redis::cmd("CLIENT")
         .arg(&["SETNAME", "PRODUCER"])
         .query(&mut con)
@@ -37,6 +39,20 @@ fn producer(config: &rs_util::Config) {
     let mut n = 0;
     let mut rng = thread_rng();
     loop {
+        // Check if the stop signal has been received
+        match rx.try_recv() {
+            Ok(val) => {
+                if val == "STOP" {
+                    println!("[>] Producer: Stop signal received: {}.", val);
+                    break;
+                }
+            }
+            Err(TryRecvError::Disconnected) => {
+                println!("[>] Channel disconnected. Stopping producer thread.");
+                break;
+            }
+            Err(TryRecvError::Empty) => {}
+        }
         // Write data to stream
         let _id: String = con
             .xadd(KEY, "*", &[("n".to_string(), n.to_string())])
@@ -69,8 +85,22 @@ fn new_consumer(name: String) -> Consumer {
     Consumer { name, process_id }
 }
 
-fn chaos(mut consumers: Vec<Consumer>) {
+fn chaos(mut consumers: Vec<Consumer>, rx: mpsc::Receiver<&str>) -> Vec<Consumer> {
     loop {
+        // Check if the stop signal has been received
+        match rx.try_recv() {
+            Ok(val) => {
+                if val == "STOP" {
+                    println!("[>] Chaos: Stop signal received: {}.", val);
+                    break;
+                }
+            }
+            Err(TryRecvError::Disconnected) => {
+                println!("[>] Channel disconnected. Stopping chaos thread.");
+                break;
+            }
+            Err(TryRecvError::Empty) => {}
+        }
         let mut rng = thread_rng();
         if rng.gen_range(2..=12) == 2 {
             let victim = rng.gen_range(0..MEMBERS) as usize;
@@ -81,6 +111,8 @@ fn chaos(mut consumers: Vec<Consumer>) {
         }
         thread::sleep(Duration::from_millis(rng.gen_range(1000..=2000)));
     }
+
+    consumers
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -95,6 +127,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     );
     let config = rs_util::app_config(app_name, about);
 
+    println!("Press ENTER to run the application now.");
+    println!("Press ENTER again later to exit cleanly...");
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
     // Initialize the stream and group
     setup(&config);
 
@@ -102,10 +140,40 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let consumers = consumers();
 
     // Start the chaos function in a separate thread
-    thread::spawn(|| chaos(consumers));
+    let (chaos_tx, chaos_rx) = mpsc::channel::<&str>();
+    let chaos_handle = thread::spawn(move || chaos(consumers, chaos_rx));
 
-    // Start the producer on the main thread
-    producer(&config);
+    // Start the producer in its own thread
+    let (prod_tx, prod_rx) = mpsc::channel::<&str>();
+    let config_prod = config.clone();
+    thread::spawn(move || producer(config_prod, prod_rx));
+
+    // Wait for user input on the main thread to trigger cleanup
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    // Clean up
+    println!("\n\nCleaning up and exiting...");
+    // 1. Stop the producer thread
+    println!("[>] Stopping producer thread...");
+    prod_tx.send("STOP").expect("[ERROR] Failed to stop the producer thread!");
+
+    // 2. Stop the chaos thread
+    println!("[>] Stopping the chaos thread...");
+    chaos_tx.send("STOP").expect("[ERROR] Failed to stop the chaos thread!");
+    let consumers = chaos_handle.join().unwrap();
+
+    // 3. Stop the consumers
+    println!("[>] Stopping consumer processes...");
+    for mut consumer in consumers {
+        consumer.process_id.kill().expect(&format!("[ERROR] Failed to stop {}", consumer.name));
+    }
+
+    // 4. Delete the stream key from Redis
+    let mut con = rs_util::get_connection(&config).unwrap();
+    let _: i32 = con.del(KEY).expect("[ERROR] Failed to delete the stream key!");
+
+    println!("\n\nGood-bye!");
 
     Ok(())
 }
