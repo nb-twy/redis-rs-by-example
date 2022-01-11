@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use rand::prelude::*;
 use redis::Commands;
+use colored::Colorize;
 
 use rs_util;
 
@@ -76,7 +77,7 @@ fn chaos(mut consumers: Vec<Consumer>) {
             let name = format!("BOB-{:02}", victim + 1);
             consumers[victim].process_id.kill().expect("Failed to stop process");
             consumers[victim] = new_consumer(name);
-            println!("CHAOS: Restarted {}", consumers[victim].name);
+            println!("{} {}", "CHAOS: Restarted".magenta(), consumers[victim].name.magenta());
         }
         thread::sleep(Duration::from_millis(rng.gen_range(1000..=2000)));
     }

@@ -7,6 +7,7 @@ use rand::prelude::*;
 use redis::streams::{StreamReadOptions, StreamReadReply};
 use redis::{Commands, ConnectionInfo, RedisResult};
 use is_prime::*;
+use colored::Colorize;
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     let matches = App::new("rrbe-address-port")
@@ -102,10 +103,10 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
         if recovery {
             // If the response is empty, then there are no pending messages.
             if !reply.keys[0].ids.is_empty() {
-                println!("{}: Recovering pending messages...", consumer_name);
+                println!("{}: {}", consumer_name.yellow(), "Recovering pending messages...".cyan());
             } else {
                 // If there are no messages to recover, switch to fetching new messages.
-                println!("{}: Processing new messages...", consumer_name);
+                println!("{}: {}", consumer_name.yellow(), "Processing new messages...".cyan());
                 recovery = false;
                 from_id = ">".to_string();
                 continue;
@@ -117,11 +118,15 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
             for id in &stream.ids {
                 let n: i32 = id.get("n").unwrap();
                 if is_prime(&n.to_string()) {
-                    println!("{}: {} is a prime number", consumer_name, n);
+                    println!("{}: {} {}", consumer_name.yellow(), n.to_string().green(), "is a prime number".green());
                 } else {
-                    println!("{}: {} is a not prime number", consumer_name, n);
+                    println!("{}: {} is a not prime number", consumer_name.yellow(), n);
                 }
                 let _: RedisResult<()> = con.xack(&stream_name, &group_name, &[&id.id]);
+
+                // Add artificial time delay to allow for the chaos function to stop a process
+                // before it is able to complete processing entries.
+                sleep(Duration::from_millis(thread_rng().gen_range(1000..=2000)));
             }
         }
     }
