@@ -51,22 +51,37 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         },
     };
 
-    let stream_name: String = matches.value_of("STREAM").unwrap().to_string();
-    let group_name: String = matches.value_of("GROUP").unwrap().to_string();
-    let consumer_name: String = matches.value_of("CONSUMER").unwrap().to_string();
+    let stream_name: String = matches.value_of("STREAM")
+        .expect("[ERROR] Stream name missing!")
+        .to_string();
+    let group_name: String = matches.value_of("GROUP")
+        .expect("[ERROR] Group name missing!")
+        .to_string();
+    let consumer_name: String = matches.value_of("CONSUMER")
+        .expect("[ERROR] Consumer name missing!")
+        .to_string();
 
     println!("Stream name: {}", stream_name);
     println!("Group name: {}", group_name);
     println!("Consumer name: {}", consumer_name);
 
-    // Open connection to local redis server
+    // Open connection to redis server
     let client = redis::Client::open(con_info)?;
     let mut con = client.get_connection()?;
 
+    // Create the consumer
     consumer(&mut con, &stream_name, &group_name, &consumer_name);
     Ok(())
 }
 
+/// Start a consumer for the given stream and group
+/// The consumer begins by determining if there are any pending items and processes them first.
+/// Once any pending items are processed, the consumer begins processing any new messages.
+/// If there are new new items on the stream for 100ms, the consumer releases its connection
+/// and tries again four more times, doubling the timeout time each time.  If no new data
+/// is available on the stream after 3.1 seconds, the consumer stops itself entirely.
+/// Message processing consists of determining if the whole number read from the stream is a
+/// prime number or not, printing the result to the screen, and acknowledging the item to redis.
 fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, consumer_name: &str) {
     let mut rng = thread_rng();
     let mut timeout = 100;
@@ -75,6 +90,8 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
     let mut from_id = "0".to_string();
 
     loop {
+        // Each time a consumer reads from the stream, it may read a random number of entries
+        // between 1 and 6.
         let count = rng.gen_range(1..6);
         let opts = StreamReadOptions::default()
             .group(group_name, consumer_name)
@@ -83,7 +100,10 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
         // Using the ID 0 asks for any pending messages from the stream
         let reply: StreamReadReply = con
             .xread_options(&[&stream_name], &[&from_id], &opts)
-            .unwrap();
+            //             ^----------------^-Remember that xreadgroup allows us to read from multiple
+            //             streams simultaneously.  That's why the stream_name and from_id properties
+            //             are slices.
+            .expect(&format!("[ERROR] {} - Failure reading from stream!", consumer_name));
         
         // Handle timeouts - when stream entries are not available to be read
         if reply.keys.is_empty() {
@@ -108,6 +128,7 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
                 // If there are no messages to recover, switch to fetching new messages.
                 println!("{}: {}", consumer_name.yellow(), "Processing new messages...".cyan());
                 recovery = false;
+                // Setting from_id to > tells redis to deliver the next undelivered item(s)
                 from_id = ">".to_string();
                 continue;
             }
@@ -116,13 +137,20 @@ fn consumer(con: &mut redis::Connection, stream_name: &str, group_name: &str, co
         // Process messages
         for stream in &reply.keys {
             for id in &stream.ids {
-                let n: i32 = id.get("n").unwrap();
+                let n: i32 = id.get("n").expect("[ERROR] Failure extracting data from stream item!");
+                //                   ^-We know that "n" is the name of the field in the stream item.
                 if is_prime(&n.to_string()) {
                     println!("{}: {} {}", consumer_name.yellow(), n.to_string().green(), "is a prime number".green());
                 } else {
                     println!("{}: {} is a not prime number", consumer_name.yellow(), n);
                 }
                 let _: RedisResult<()> = con.xack(&stream_name, &group_name, &[&id.id]);
+                //  ^-We are throwing away the response received from acknowledging the item.
+                //    The return value is the number of messages successfully acknowledged.
+                //    We could process all messages received before acknowleding any, but that
+                //    seems like it would add unnecessary complexity in this case.
+                //    We could also check to make sure this value is equal to 1, indicating that
+                //    that the one item we wished to acknowledge succeeded.
 
                 // Add artificial time delay to allow for the chaos function to stop a process
                 // before it is able to complete processing entries.
