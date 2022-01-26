@@ -6,7 +6,7 @@
 if [[ -d ./main ]]; then
     echo "[>] Building consumer_group_main..."
     cd main
-    cargo build
+    cargo build || exit
     cd ..
     echo -e "\n\n"
 fi
@@ -15,7 +15,7 @@ fi
 if [[ -d ./consumer ]]; then
     echo "[>] Building consumer_group_consumer..."
     cd consumer
-    cargo build
+    cargo build || exit
     cd ..
     echo -e "\n\n"
 fi
