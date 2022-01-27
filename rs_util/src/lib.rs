@@ -4,7 +4,10 @@ use redis::{Connection, ConnectionInfo, RedisResult};
 #[derive(Clone, Debug)]
 pub struct Config {
     pub host: String,
-    pub port: u16
+    pub port: u16,
+    pub db: i64,
+    pub username: Option<String>,
+    pub password: Option<String>
 }
 
 pub fn app_config (name: String, about: String) -> Config {
@@ -16,20 +19,48 @@ pub fn app_config (name: String, about: String) -> Config {
             .help("The resolvable hostname or IP address of the Redis server")
             .long("host")
             .short('h')
-            .default_value("127.0.0.1"),
+            .default_value("127.0.0.1")
     )
     .arg(
         Arg::with_name("PORT")
             .help("TCP port number of the Redis server")
             .long("port")
             .short('p')
-            .default_value("6379"),
+            .default_value("6379")
+    )
+    .arg(
+        Arg::with_name("DB")
+        .help("DB number")
+        .long("db")
+        .short('d')
+        .default_value("0")
+    )
+    .arg(
+        Arg::with_name("USERNAME")
+        .help("Username for the connection")
+        .long("username")
+        .short('u')
+    )
+    .arg(
+        Arg::with_name("PASSWORD")
+        .help("Password for connection")
+        .long("password")
+        .short('w')
     )
     .get_matches();
 
     Config {
         host: matches.value_of("HOST").unwrap().to_string(),
-        port: matches.value_of("PORT").unwrap().parse().unwrap_or(6379)
+        port: matches.value_of("PORT").unwrap().parse().unwrap_or(6379),
+        db: matches.value_of("DB").unwrap().parse().unwrap_or(0),
+        username: match matches.value_of("USERNAME") {
+            Some(val) => Some(val.to_string()),
+            None => None
+        },
+        password: match matches.value_of("PASSWORD") {
+            Some(val) => Some(val.to_string()),
+            None => None
+        }
     }
 }
 
@@ -37,9 +68,9 @@ pub fn get_connection (config: &Config) -> RedisResult<Connection> {
     let con_info = ConnectionInfo {
         addr: redis::ConnectionAddr::Tcp(config.host.clone(), config.port),
         redis: redis::RedisConnectionInfo {
-            db: 0,
-            username: None,
-            password: None,
+            db: config.db,
+            username: config.username.clone(),
+            password: config.password.clone(),
         }
     };
 
