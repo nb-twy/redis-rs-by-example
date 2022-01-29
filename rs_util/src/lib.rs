@@ -78,3 +78,68 @@ pub fn get_connection (config: &Config) -> RedisResult<Connection> {
     let client = redis::Client::open(con_info)?;
     client.get_connection()
 }
+
+const MAX_SEQ: i64 = 2^64 -1;
+
+/// Increment a Stream message ID by one
+pub fn incr_id(id: &str) -> String {
+    let parts: Vec<i64> = id.split('-').map(|part| part.parse::<i64>()
+        .expect("[ERROR] Could not parse stream entry id!")).collect();
+    let mut time = parts[0];
+    let mut seq = parts[1];
+
+    if seq == MAX_SEQ {
+        time +=1;
+        seq = 0;
+    } else {
+        seq += 1;
+    }
+
+    format!("{}-{}", time, seq)
+}
+
+/// Decrement a Stream message ID by one
+pub fn decr_id(id: &str) -> String {
+    let parts: Vec<i64> = id.split('-').map(|part| part.parse::<i64>()
+        .expect("[ERROR] Could not parse stream entry id!")).collect();
+    let mut time = parts[0];
+    let mut seq = parts[1];
+
+    if seq == 0 {
+        time -=1;
+        seq = MAX_SEQ;
+    } else {
+        seq -= 1;
+    }
+
+    format!("{}-{}", time, seq)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_incr_id() {
+        let id = "1643414204175-0";
+        assert_eq!(incr_id(id), "1643414204175-1");
+    }
+
+    #[test]
+    fn test_incr_id_max() {
+        let id = format!("1643414204175-{}", 2^64 - 1);
+        assert_eq!(incr_id(&id), "1643414204176-0")
+    }
+
+    #[test]
+    fn test_decr_id() {
+        let id = format!("1643414204175-23");
+        assert_eq!(decr_id(&id), "1643414204175-22");
+    }
+
+    #[test]
+    fn test_decr_id_zero() {
+        let id = format!("1643414204175-0");
+        assert_eq!(decr_id(&id), format!("1643414204174-{}", 2^64 - 1));
+    }
+}
